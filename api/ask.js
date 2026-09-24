@@ -7,7 +7,6 @@ const groq = new OpenAI({
   baseURL: 'https://api.groq.com/openai/v1'
 });
 
-
 const rateLimitMap = new Map();
 const WINDOW_TIME_MS = 60 * 1000; 
 const MAX_REQUESTS_PER_WINDOW = 5; 
@@ -22,7 +21,6 @@ function checkRateLimit(ip) {
   }
 
   if (now - clientData.startTime > WINDOW_TIME_MS) {
-    
     rateLimitMap.set(ip, { count: 1, startTime: now });
     return true;
   }
@@ -37,12 +35,17 @@ function checkRateLimit(ip) {
 
 export default async function handler(req, res) {
   
+  // --- SÉCURITÉ CORS RESTREINTE ---
+  // On autorise uniquement ton vrai site WordPress au lieu de '*'
+  const allowedOrigin = 'https://martechmag.com';
+  const origin = req.headers.origin || req.headers.referer;
+
   res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,GET');
+  res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
   res.setHeader(
     'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+    'Content-Type'
   );
 
   if (req.method === 'OPTIONS') {
@@ -54,26 +57,24 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // --- ANTI BOT SECURITY ---
-  const { question, humanToken } = req.body;
-  
-  // Le front-end doit envoyer un token simple ou un booléen validé par une mini action humaine
-  if (!humanToken || humanToken !== 'martechmag_verified_2026') {
-    return res.status(403).json({ error: 'Bot detected or verification failed.' });
+  // --- VÉRIFICATION DE L'ORIGINE (anti-bot / anti-scraping direct) ---
+  // On s'assure que la requête vient bien de ton domaine (on gère aussi le www ou le local si tu testes en dev)
+  if (!origin || (!origin.includes('martechmag.com') && !origin.includes('localhost'))) {
+    return res.status(403).json({ error: 'Access denied: invalid origin.' });
   }
 
-  
+  // --- RATE LIMITING PAR IP ---
   const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
   if (!checkRateLimit(clientIp)) {
     return res.status(429).json({ error: 'Too many requests. Please wait a minute before trying again.' });
   }
 
+  const { question } = req.body;
   if (!question) {
     return res.status(400).json({ error: "Missing question." });
   }
 
   try {
-    
     let { data: docs } = await supabase
       .from('martechmag_docs')
       .select('content, metadata')
@@ -92,7 +93,6 @@ export default async function handler(req, res) {
       return res.json({ answer: "No relevant content found in the knowledge base.", sources: [] });
     }
 
-  
     let context = "";
     const sources = [];
     docs.forEach((doc, index) => {
@@ -100,7 +100,6 @@ export default async function handler(req, res) {
       sources.push({ title: doc.metadata.title, type: doc.metadata.type });
     });
 
-    
     const completion = await groq.chat.completions.create({
       model: 'openai/gpt-oss-20b',
       messages: [
