@@ -86,4 +86,4 @@ CRITICAL RULES:
     console.error(err);
     return res.status(500).json({ error: "Internal RAG server error." });
   }
-}
+} 
