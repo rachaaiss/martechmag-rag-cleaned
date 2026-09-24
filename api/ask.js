@@ -7,8 +7,36 @@ const groq = new OpenAI({
   baseURL: 'https://api.groq.com/openai/v1'
 });
 
+
+const rateLimitMap = new Map();
+const WINDOW_TIME_MS = 60 * 1000; 
+const MAX_REQUESTS_PER_WINDOW = 5; 
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  let clientData = rateLimitMap.get(ip);
+
+  if (!clientData) {
+    rateLimitMap.set(ip, { count: 1, startTime: now });
+    return true;
+  }
+
+  if (now - clientData.startTime > WINDOW_TIME_MS) {
+    
+    rateLimitMap.set(ip, { count: 1, startTime: now });
+    return true;
+  }
+
+  if (clientData.count >= MAX_REQUESTS_PER_WINDOW) {
+    return false; 
+  }
+
+  clientData.count++;
+  return true;
+}
+
 export default async function handler(req, res) {
-  // Autoriser les requêtes CORS (pour que ton widget WordPress puisse l'appeler)
+  
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,GET');
@@ -26,13 +54,26 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { question } = req.body;
+  // --- ANTI BOT SECURITY ---
+  const { question, humanToken } = req.body;
+  
+  // Le front-end doit envoyer un token simple ou un booléen validé par une mini action humaine
+  if (!humanToken || humanToken !== 'martechmag_verified_2026') {
+    return res.status(403).json({ error: 'Bot detected or verification failed.' });
+  }
+
+  
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+  if (!checkRateLimit(clientIp)) {
+    return res.status(429).json({ error: 'Too many requests. Please wait a minute before trying again.' });
+  }
+
   if (!question) {
     return res.status(400).json({ error: "Missing question." });
   }
 
   try {
-    // 1. Recherche dans Supabase
+    
     let { data: docs } = await supabase
       .from('martechmag_docs')
       .select('content, metadata')
@@ -51,7 +92,7 @@ export default async function handler(req, res) {
       return res.json({ answer: "No relevant content found in the knowledge base.", sources: [] });
     }
 
-    // 2. Construction du contexte
+  
     let context = "";
     const sources = [];
     docs.forEach((doc, index) => {
@@ -59,7 +100,7 @@ export default async function handler(req, res) {
       sources.push({ title: doc.metadata.title, type: doc.metadata.type });
     });
 
-    // 3. Appel Groq
+    
     const completion = await groq.chat.completions.create({
       model: 'openai/gpt-oss-20b',
       messages: [
@@ -86,4 +127,4 @@ CRITICAL RULES:
     console.error(err);
     return res.status(500).json({ error: "Internal RAG server error." });
   }
-} 
+}
