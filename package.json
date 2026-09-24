@@ -1,0 +1,20 @@
+{
+  "name": "martechmag-rag",
+  "version": "1.0.0",
+  "description": "RAG pour MarTechMag",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.117.1",
+    "cors": "^2.8.6",
+    "csv-parser": "^3.2.1",
+    "dotenv": "^18.0.3",
+    "express": "^5.2.1",
+    "groq-sdk": "^1.6.0",
+    "openai": "^7.23.0",
+    "pdf-parse": "^2.4.5"
+  }
+}
