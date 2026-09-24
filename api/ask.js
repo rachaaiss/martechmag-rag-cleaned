@@ -35,18 +35,13 @@ function checkRateLimit(ip) {
 
 export default async function handler(req, res) {
   
-  // --- SÉCURITÉ CORS RESTREINTE ---
-  // On autorise uniquement ton vrai site WordPress au lieu de '*'
-  const allowedOrigin = 'https://martechmag.com';
-  const origin = req.headers.origin || req.headers.referer;
+
+  const origin = req.headers.origin || req.headers.referer || '';
 
   res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+   res.setHeader('Access-Control-Allow-Origin', origin.includes('martechmag.com') ? origin : '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'Content-Type'
-  );
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
     res.status(200).end();
@@ -55,12 +50,6 @@ export default async function handler(req, res) {
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  // --- VÉRIFICATION DE L'ORIGINE (anti-bot / anti-scraping direct) ---
-  // On s'assure que la requête vient bien de ton domaine (on gère aussi le www ou le local si tu testes en dev)
-  if (!origin || (!origin.includes('martechmag.com') && !origin.includes('localhost'))) {
-    return res.status(403).json({ error: 'Access denied: invalid origin.' });
   }
 
   // --- RATE LIMITING PAR IP ---
