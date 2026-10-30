@@ -56,39 +56,25 @@ export default async function handler(req, res) {
   }
 
   try {
-    const cleanQuery = question.replace(/[^\w\s]/gi, '').trim();
-    let docs = [];
-
-   
-    const { data: ftsData } = await supabase
+    
+    let { data: docs } = await supabase
       .from('martechmag_docs')
       .select('content, metadata')
-      .textSearch('content', cleanQuery, { type: 'plain', config: 'english' })
+      .textSearch('content', question, { type: 'websearch', config: 'english' })
       .limit(3);
 
-    if (ftsData && ftsData.length > 0) {
-      docs = ftsData;
-    }
+      if (!docs || docs.length === 0) {
+      const cleanWords = question.replace(/[^\w\s]/gi, '').split(/\s+/);
+      const mainKeyword = cleanWords.find(w => w.length >= 3 && w === w.toUpperCase()) || cleanWords[cleanWords.length - 1];
 
-    
-    if (!docs || docs.length === 0) {
-      const stopWords = new Set(['what', 'is', 'the', 'how', 'are', 'and', 'for', 'why', 'can', 'does', 'framework']);
-      const terms = cleanQuery
-        .split(/\s+/)
-        .filter(w => w.length >= 2 && !stopWords.has(w.toLowerCase()));
-
-      const primaryTerm = terms.length > 0 ? terms[terms.length - 1] : cleanQuery;
-
-      if (primaryTerm) {
-        const { data: fallbackData } = await supabase
+      if (mainKeyword) {
+        const { data: fallbackDocs } = await supabase
           .from('martechmag_docs')
           .select('content, metadata')
-          .ilike('content', `%${primaryTerm}%`)
+          .ilike('content', `%${mainKeyword}%`)
           .limit(3);
 
-        if (fallbackData && fallbackData.length > 0) {
-          docs = fallbackData;
-        }
+        docs = fallbackDocs;
       }
     }
 
@@ -105,41 +91,34 @@ export default async function handler(req, res) {
     docs.forEach((doc, index) => {
       const title = doc.metadata?.title || 'Untitled';
       const type = doc.metadata?.type || 'Article';
-      context += `<source id="${index + 1}" type="${type}" title="${title}">\n${doc.content}\n</source>\n\n`;
+      context += `--- Source ${index + 1} [Type: ${type} - Title: ${title}] ---\n${doc.content}\n\n`;
       sources.push({ title, type });
     });
-
-    const SYSTEM_PROMPT = `<role>
-You are the official AI Assistant for MartechMag (martechmag.com), specialized in B2B MarTech, marketing operations, and adtech.
-</role>
-
-<instructions>
-1. GROUNDING: Answer the query using ONLY the provided context blocks wrapped in <source> tags. Do not use pre-trained knowledge or external information.
-2. MISSING INFO: If the context does not contain enough information to provide a clear answer, respond strictly with: "No relevant content found in MartechMag's database for this topic."
-3. LANGUAGE: Always respond in professional, concise English regardless of the prompt language.
-4. FORMAT & STYLE:
-   - Provide direct, executive-level insights immediately.
-   - Limit responses to 1 or 2 high-density paragraphs.
-   - Avoid conversational filler.
-   - Do not use markdown tables or heavy formatting.
-</instructions>`;
-
-    const USER_PROMPT = `<context>\n${context}</context>\n\n<user_question>${question}</user_question>`;
 
     const completion = await groq.chat.completions.create({
       model: 'openai/gpt-oss-20b',
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: USER_PROMPT }
+        {
+          role: 'system',
+          content: `You are the official AI Assistant for MartechMag (martechmag.com).
+Your sole purpose is to answer the user's questions accurately and concisely based ONLY on the provided context (articles, Lab Reports, and glossary).
+
+CRITICAL RULES:
+1. STRICTLY CONTEXT-BOUND: Use only the provided context. Never use external knowledge, never invent information, and never extrapolate beyond the provided texts. If the answer cannot be found in the context, state clearly that the information is not available in MartechMag's database.
+2. LANGUAGE ENFORCEMENT: You must ALWAYS respond in professional English.
+3. DIRECT ANSWER FIRST: Address the exact concept the user is asking about immediately without generic introductions.
+4. BREVITY & STYLE: Keep responses to 1 or 2 tight paragraphs maximum. Maintain a professional editorial style.`
+        },
+        { role: 'user', content: `Context:\n${context}\n\nQuestion: ${question}` }
       ],
-      temperature: 0.1
+      temperature: 0.2,
     });
 
     const answer = completion.choices[0]?.message?.content || "No response generated.";
     return res.status(200).json({ answer, sources });
 
   } catch (err) {
-    console.error('RAG Pipeline Error:', err);
+    console.error('RAG Error:', err);
     return res.status(500).json({ error: 'Internal RAG server error.' });
   }
 }
