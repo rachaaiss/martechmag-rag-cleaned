@@ -43,34 +43,30 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
+    return res.status(200).end();
   }
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // --- RATE LIMITING & PROTECTION ---
   const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
   if (!checkRateLimit(clientIp)) {
     return res.status(429).json({ error: 'Too many requests. Please wait a minute before trying again.' });
   }
 
   const { question } = req.body;
-  if (!question) {
+  if (!question || typeof question !== 'string' || !question.trim()) {
     return res.status(400).json({ error: "Missing question." });
   }
 
   try {
-    // 1. Recherche full-text principale
     let { data: docs } = await supabase
       .from('martechmag_docs')
       .select('content, metadata')
       .textSearch('content', question, { type: 'websearch', config: 'english' })
       .limit(2);
 
-    // 2. Fallback exact de ton ancien code qui débloquait tout
     if (!docs || docs.length === 0) {
       const { data: fallbackDocs } = await supabase
         .from('martechmag_docs')
