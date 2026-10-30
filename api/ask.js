@@ -57,28 +57,38 @@ export default async function handler(req, res) {
 
   try {
     const cleanQuery = question.replace(/[^\w\s]/gi, '').trim();
+    let docs = [];
 
-    let { data: docs, error: searchError } = await supabase
+   
+    const { data: ftsData } = await supabase
       .from('martechmag_docs')
       .select('content, metadata')
-      .textSearch('content', cleanQuery, { type: 'websearch', config: 'english' })
+      .textSearch('content', cleanQuery, { type: 'plain', config: 'english' })
       .limit(3);
 
-    if (searchError) {
-      console.error('Supabase search error:', searchError);
+    if (ftsData && ftsData.length > 0) {
+      docs = ftsData;
     }
 
+    
     if (!docs || docs.length === 0) {
-      const keywords = cleanQuery.split(/\s+/).filter(word => word.length > 2);
-      if (keywords.length > 0) {
-        const primaryKeyword = keywords[keywords.length - 1];
-        const { data: fallbackDocs } = await supabase
+      const stopWords = new Set(['what', 'is', 'the', 'how', 'are', 'and', 'for', 'why', 'can', 'does', 'framework']);
+      const terms = cleanQuery
+        .split(/\s+/)
+        .filter(w => w.length >= 2 && !stopWords.has(w.toLowerCase()));
+
+      const primaryTerm = terms.length > 0 ? terms[terms.length - 1] : cleanQuery;
+
+      if (primaryTerm) {
+        const { data: fallbackData } = await supabase
           .from('martechmag_docs')
           .select('content, metadata')
-          .ilike('content', `%${primaryKeyword}%`)
-          .limit(2);
+          .ilike('content', `%${primaryTerm}%`)
+          .limit(3);
 
-        docs = fallbackDocs || [];
+        if (fallbackData && fallbackData.length > 0) {
+          docs = fallbackData;
+        }
       }
     }
 
@@ -110,14 +120,9 @@ You are the official AI Assistant for MartechMag (martechmag.com), specialized i
 4. FORMAT & STYLE:
    - Provide direct, executive-level insights immediately.
    - Limit responses to 1 or 2 high-density paragraphs.
-   - Avoid conversational filler (e.g., "Based on the provided sources...", "Sure! Here is...").
+   - Avoid conversational filler.
    - Do not use markdown tables or heavy formatting.
-</instructions>
-
-<few_shot_example>
-User Question: What is ABM?
-Ideal Response: Account-Based Marketing (ABM) is a strategic growth strategy where marketing and sales teams collaborate to create personalized buying experiences for a mutually agreed-upon set of high-value accounts. Rather than casting a wide net, ABM focuses resources on engaging specific decision-makers within target organizations.
-</few_shot_example>`;
+</instructions>`;
 
     const USER_PROMPT = `<context>\n${context}</context>\n\n<user_question>${question}</user_question>`;
 
