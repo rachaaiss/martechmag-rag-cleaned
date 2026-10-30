@@ -1,3 +1,4 @@
+// MartechMag RAG API Endpoint
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
 
@@ -52,7 +53,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // --- RATE LIMITING PAR IP ---
+  // --- RATE LIMITING ---
   const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
   if (!checkRateLimit(clientIp)) {
     return res.status(429).json({ error: 'Too many requests. Please wait a minute before trying again.' });
@@ -64,7 +65,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Recherche Full-Text sur Supabase
+    
     let { data: docs } = await supabase
       .from('martechmag_docs')
       .select('content, metadata')
