@@ -56,28 +56,42 @@ export default async function handler(req, res) {
   }
 
   try {
+    let docs = [];
+
     
-    let { data: docs } = await supabase
+    const { data: ftsDocs } = await supabase
       .from('martechmag_docs')
       .select('content, metadata')
       .textSearch('content', question, { type: 'websearch', config: 'english' })
       .limit(3);
 
-      if (!docs || docs.length === 0) {
-      const cleanWords = question.replace(/[^\w\s]/gi, '').split(/\s+/);
-      const mainKeyword = cleanWords.find(w => w.length >= 3 && w === w.toUpperCase()) || cleanWords[cleanWords.length - 1];
+    if (ftsDocs && ftsDocs.length > 0) {
+      docs = ftsDocs;
+    }
 
-      if (mainKeyword) {
-        const { data: fallbackDocs } = await supabase
+    
+    if (!docs || docs.length === 0) {
+      const stopWords = new Set(['what', 'is', 'the', 'framework', 'how', 'to', 'for', 'are', 'a', 'an']);
+      const cleanWords = question
+        .replace(/[^\w\s]/gi, '')
+        .split(/\s+/)
+        .filter(w => w.length >= 2 && !stopWords.has(w.toLowerCase()));
+
+      for (const word of cleanWords) {
+        const { data: keywordDocs } = await supabase
           .from('martechmag_docs')
           .select('content, metadata')
-          .ilike('content', `%${mainKeyword}%`)
+          .ilike('content', `%${word}%`)
           .limit(3);
 
-        docs = fallbackDocs;
+        if (keywordDocs && keywordDocs.length > 0) {
+          docs = keywordDocs;
+          break; 
+        }
       }
     }
 
+    
     if (!docs || docs.length === 0) {
       return res.status(200).json({
         answer: "No relevant content found in MartechMag's database for this topic.",
@@ -85,6 +99,7 @@ export default async function handler(req, res) {
       });
     }
 
+    
     let context = '';
     const sources = [];
 
