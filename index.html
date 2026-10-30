@@ -223,10 +223,8 @@
         const chatInput = document.getElementById('chat-input');
         const chatMessages = document.getElementById('chat-messages');
 
-        // URL de ton API Vercel en production
         const API_URL = 'https://martechmag-rag-cleaned.vercel.app/api/ask';
 
-        // Gestion des boutons de suggestion prédéfinis
         document.addEventListener('click', async (e) => {
             if (e.target.classList.contains('suggestion-chip')) {
                 const question = e.target.textContent;
@@ -235,17 +233,14 @@
             }
         });
 
-        // Soumission du formulaire
         chatForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const question = chatInput.value.trim();
             if (!question) return;
 
-            // Ajout du message utilisateur
             appendMessage(question, 'user-message');
             chatInput.value = '';
 
-            // Message de chargement temporaire
             const loadingId = appendMessage('Searching through Lab Reports and articles...', 'bot-message loading');
 
             try {
@@ -256,38 +251,55 @@
                 });
 
                 const data = await response.json();
-                document.getElementById(loadingId).remove();
+                document.getElementById(loadingId)?.remove();
 
                 if (data.answer) {
-                    let formattedAnswer = data.answer;
-                    
-                    // Injection dynamique des sources si elles existent
-                    if (data.sources && data.sources.length > 0) {
-                        formattedAnswer += `<div class="sources-box"><span>Sources:</span> ${data.sources.map(s => s.title).join(' • ')}</div>`;
-                    }
-
-                    appendMessage(formattedAnswer, 'bot-message', true);
+                    appendBotResponse(data.answer, data.sources);
                 } else {
                     appendMessage("Sorry, an error occurred.", 'bot-message');
                 }
 
             } catch (err) {
-                document.getElementById(loadingId).remove();
+                document.getElementById(loadingId)?.remove();
                 appendMessage("Unable to connect to the RAG server.", 'bot-message');
             }
         });
 
-        function appendMessage(text, className, isHTML = false) {
+        // Fonction sécurisée contre les failles XSS
+        function appendBotResponse(answerText, sources = []) {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'message bot-message';
+            
+            // Insertion sécurisée du texte de la réponse (text node)
+            const textContainer = document.createElement('div');
+            textContainer.textContent = answerText;
+            msgDiv.appendChild(textContainer);
+
+            // Ajout sécurisé des sources si présentes
+            if (sources && sources.length > 0) {
+                const sourcesBox = document.createElement('div');
+                sourcesBox.className = 'sources-box';
+                
+                const labelSpan = document.createElement('span');
+                labelSpan.textContent = 'Sources: ';
+                sourcesBox.appendChild(labelSpan);
+
+                const titles = sources.map(s => s.title).join(' • ');
+                sourcesBox.appendChild(document.createTextNode(titles));
+                
+                msgDiv.appendChild(sourcesBox);
+            }
+
+            chatMessages.appendChild(msgDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function appendMessage(text, className) {
             const msgDiv = document.createElement('div');
             msgDiv.className = `message ${className}`;
             const id = 'msg-' + Date.now();
             msgDiv.id = id;
-
-            if (isHTML) {
-                msgDiv.innerHTML = text;
-            } else {
-                msgDiv.textContent = text;
-            }
+            msgDiv.textContent = text;
 
             chatMessages.appendChild(msgDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
